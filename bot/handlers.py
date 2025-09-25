@@ -416,6 +416,25 @@ async def set_schedule(callback: CallbackQuery):
     await schedule_menu(callback)
 
 
+@router.callback_query(F.data.startswith("delete_rss_"))
+async def delete_rss_confirm(callback: CallbackQuery):
+    source_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    source = db.query(RSSSource).filter_by(id=source_id).first()
+    if not source:
+        await callback.answer("RSS источник не найден", show_alert=True)
+        db.close()
+        return
+    
+    channel_id = source.channel_id
+    db.close()
+    
+    await callback.message.edit_text(
+        f"Вы уверены, что хотите удалить RSS источник «{source.name}»?",
+        reply_markup=keyboards.confirm_delete_rss(source_id, channel_id)
+    )
+
+
 @router.callback_query(F.data.startswith("delete_"))
 async def delete_channel_confirm(callback: CallbackQuery):
     channel_id = int(callback.data.split("_")[1])
@@ -430,6 +449,27 @@ async def delete_channel_confirm(callback: CallbackQuery):
         f"Вы уверены, что хотите удалить канал «{channel.channel_name}» и все связанные с ним данные?",
         reply_markup=keyboards.confirm_delete(channel_id)
     )
+
+
+@router.callback_query(F.data.startswith("confirm_delete_rss_"))
+async def delete_rss_execute(callback: CallbackQuery):
+    source_id = int(callback.data.split("_")[3])
+    db = SessionLocal()
+    source = db.query(RSSSource).filter_by(id=source_id).first()
+    if source:
+        channel_id = source.channel_id
+        source_name = source.name
+        delete_rss_source(db, source_id)
+        sources = db.query(RSSSource).filter_by(channel_id=channel_id).all()
+        
+        await callback.answer(f"RSS источник «{source_name}» удален", show_alert=True)
+        await callback.message.edit_text(
+            "📰 Ваши RSS-источники:" if sources else "📰 У вас пока нет RSS-источников.",
+            reply_markup=keyboards.rss_sources_menu(channel_id, sources)
+        )
+    else:
+        await callback.answer("RSS источник не найден", show_alert=True)
+    db.close()
 
 
 @router.callback_query(F.data.startswith("confirm_delete_"))

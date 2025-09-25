@@ -34,8 +34,12 @@ class Keyboards:
             status = "✅" if source.is_active else "❌"
             keyboard.append([
                 InlineKeyboardButton(
-                    text=f"{status} {source.name[:30]}",
+                    text=f"{status} {source.name[:25]}",
                     callback_data=f"source_{source.id}"
+                ),
+                InlineKeyboardButton(
+                    text="🗑️",
+                    callback_data=f"delete_rss_{source.id}"
                 )
             ])
 
@@ -136,6 +140,16 @@ class Keyboards:
             [
                 InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_{channel_id}"),
                 InlineKeyboardButton(text="❌ Отмена", callback_data=f"channel_{channel_id}")
+            ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    @staticmethod
+    def confirm_delete_rss(source_id: int, channel_id: int):
+        keyboard = [
+            [
+                InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_rss_{source_id}"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data=f"rss_{channel_id}")
             ]
         ]
         return InlineKeyboardMarkup(inline_keyboard=keyboard)
