@@ -156,3 +156,21 @@ def get_moderation_posts(db: Session, channel_id: int):
         Post.channel_id == channel_id,
         Post.status == "moderation"
     ).all()
+
+
+def delete_post(db: Session, post_id: int):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post:
+        db.delete(post)
+        db.commit()
+        return True
+    return False
+
+
+def update_post_content(db: Session, post_id: int, new_content: str):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if post:
+        post.processed_content = new_content
+        db.commit()
+        return post
+    return None

@@ -366,6 +366,355 @@ async def show_queue(callback: CallbackQuery):
         )
 
 
+@router.callback_query(F.data.startswith("post_"))
+async def show_post_preview(callback: CallbackQuery, bot: Bot):
+    post_id = int(callback.data.split("_")[1])
+    db = SessionLocal()
+    post = db.query(Post).filter_by(id=post_id).first()
+    db.close()
+    
+    if not post:
+        await callback.answer("Пост не найден", show_alert=True)
+        return
+    
+    # Формируем предварительный просмотр поста
+    status_emoji = {
+        "pending": "⏳",
+        "published": "✅",
+        "moderation": "👁️",
+        "rejected": "❌"
+    }.get(post.status, "❓")
+    
+    preview_text = (
+        f"<b>📝 Предварительный просмотр поста</b>\n\n"
+        f"<b>Оригинальный заголовок:</b> {post.original_title[:80]}\n"
+        f"<b>Время публикации:</b> {post.scheduled_time.strftime('%d.%m.%Y %H:%M')}\n"
+        f"<b>Статус:</b> {status_emoji} {post.status}\n"
+        f"<b>Источник:</b> {post.source_url[:50]}...\n\n"
+        f"<b>📄 Финальный текст поста:</b>\n"
+        f"{'─' * 30}\n"
+        f"{post.processed_content}\n"
+        f"{'─' * 30}"
+    )
+    
+    # Создаем клавиатуру для действий с постом
+    keyboard = []
+    
+    # Добавляем кнопки в зависимости от статуса поста
+    if post.status == "pending":
+        keyboard.append([
+            InlineKeyboardButton(text="✅ Опубликовать сейчас", callback_data=f"publish_post_{post_id}"),
+            InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_post_{post_id}")
+        ])
+    elif post.status == "moderation":
+        keyboard.append([
+            InlineKeyboardButton(text="✅ Одобрить", callback_data=f"approve_post_{post_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_post_{post_id}")
+        ])
+    
+    # Общие действия
+    keyboard.append([
+        InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_post_{post_id}"),
+        InlineKeyboardButton(text="📋 Копировать текст", callback_data=f"copy_post_{post_id}")
+    ])
+    
+    keyboard.append([
+        InlineKeyboardButton(text="◀️ Назад к очереди", callback_data=f"queue_{post.channel_id}")
+    ])
+    
+    await callback.message.edit_text(
+        preview_text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
+
+
+@router.callback_query(F.data.startswith("publish_now_"))
+async def publish_next_post(callback: CallbackQuery, bot: Bot):
+    channel_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    
+    # Находим первый пост в очереди
+    post = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.status == "pending"
+    ).order_by(Post.scheduled_time).first()
+    
+    if not post:
+        await callback.answer("В очереди нет постов для публикации", show_alert=True)
+        db.close()
+        return
+    
+    # Публикуем пост
+    try:
+        from core.publisher import Publisher
+        publisher = Publisher(bot)
+        
+        channel = db.query(Channel).filter_by(id=channel_id).first()
+        message_id = await publisher.publish_post(
+            channel.channel_id,
+            post.processed_content,
+            post.media_urls
+        )
+        
+        if message_id:
+            update_post_status(db, post.id, "published", message_id)
+            await callback.answer(f"Пост опубликован в канале {channel.channel_name}!", show_alert=True)
+        else:
+            await callback.answer("Ошибка при публикации поста", show_alert=True)
+            
+    except Exception as e:
+        await callback.answer(f"Ошибка: {str(e)[:100]}", show_alert=True)
+    finally:
+        db.close()
+    
+    # Возвращаемся к очереди
+    callback.data = f"queue_{channel_id}"
+    await show_queue(callback)
+
+
+@router.callback_query(F.data.startswith("clear_queue_"))
+async def clear_queue_confirm(callback: CallbackQuery):
+    channel_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    posts_count = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.status == "pending"
+    ).count()
+    db.close()
+    
+    if posts_count == 0:
+        await callback.answer("Очередь уже пуста", show_alert=True)
+        return
+    
+    keyboard = [
+        [
+            InlineKeyboardButton(text="✅ Да, очистить", callback_data=f"confirm_clear_queue_{channel_id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data=f"queue_{channel_id}")
+        ]
+    ]
+    
+    await callback.message.edit_text(
+        f"Вы уверены, что хотите удалить все {posts_count} постов из очереди?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
+
+
+@router.callback_query(F.data.startswith("confirm_clear_queue_"))
+async def clear_queue_execute(callback: CallbackQuery):
+    channel_id = int(callback.data.split("_")[3])
+    db = SessionLocal()
+    
+    deleted_count = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.status == "pending"
+    ).delete()
+    
+    db.commit()
+    db.close()
+    
+    await callback.answer(f"Удалено {deleted_count} постов из очереди", show_alert=True)
+    
+    # Возвращаемся к очереди
+    callback.data = f"queue_{channel_id}"
+    await show_queue(callback)
+
+
+@router.callback_query(F.data.startswith("publish_post_"))
+async def publish_specific_post(callback: CallbackQuery, bot: Bot):
+    post_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    post = db.query(Post).filter_by(id=post_id).first()
+    
+    if not post:
+        await callback.answer("Пост не найден", show_alert=True)
+        db.close()
+        return
+    
+    try:
+        from core.publisher import Publisher
+        publisher = Publisher(bot)
+        
+        channel = db.query(Channel).filter_by(id=post.channel_id).first()
+        message_id = await publisher.publish_post(
+            channel.channel_id,
+            post.processed_content,
+            post.media_urls
+        )
+        
+        if message_id:
+            update_post_status(db, post.id, "published", message_id)
+            await callback.answer(f"Пост опубликован в канале {channel.channel_name}!", show_alert=True)
+            
+            # Возвращаемся к очереди
+            callback.data = f"queue_{post.channel_id}"
+            await show_queue(callback)
+        else:
+            await callback.answer("Ошибка при публикации поста", show_alert=True)
+            
+    except Exception as e:
+        await callback.answer(f"Ошибка: {str(e)[:100]}", show_alert=True)
+    finally:
+        db.close()
+
+
+@router.callback_query(F.data.startswith("delete_post_"))
+async def delete_specific_post(callback: CallbackQuery):
+    post_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    post = db.query(Post).filter_by(id=post_id).first()
+    
+    if not post:
+        await callback.answer("Пост не найден", show_alert=True)
+        db.close()
+        return
+    
+    channel_id = post.channel_id
+    post_title = post.original_title[:50]
+    
+    # Удаляем пост используя функцию из CRUD
+    if delete_post(db, post_id):
+        await callback.answer(f"Пост «{post_title}» удален", show_alert=True)
+    else:
+        await callback.answer("Ошибка при удалении поста", show_alert=True)
+    
+    db.close()
+    
+    # Возвращаемся к очереди
+    callback.data = f"queue_{channel_id}"
+    await show_queue(callback)
+
+
+@router.callback_query(F.data.startswith("edit_post_"))
+async def edit_post_start(callback: CallbackQuery, state: FSMContext):
+    post_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    post = db.query(Post).filter_by(id=post_id).first()
+    db.close()
+    
+    if not post:
+        await callback.answer("Пост не найден", show_alert=True)
+        return
+    
+    await state.update_data(post_id=post_id, channel_id=post.channel_id)
+    await callback.message.edit_text(
+        f"<b>Редактирование поста</b>\n\n"
+        f"<b>Текущий текст:</b>\n"
+        f"{post.processed_content}\n\n"
+        f"Отправьте новый текст поста:"
+    )
+    await state.set_state(ChannelStates.editing_post)
+
+
+@router.message(StateFilter(ChannelStates.editing_post))
+async def process_post_edit(message: Message, state: FSMContext):
+    data = await state.get_data()
+    post_id = data['post_id']
+    channel_id = data['channel_id']
+    
+    db = SessionLocal()
+    
+    # Используем функцию из CRUD для обновления контента
+    post = update_post_content(db, post_id, message.text)
+    
+    if post:
+        await message.answer("✅ Пост успешно отредактирован!")
+    else:
+        await message.answer("❌ Пост не найден")
+    
+    db.close()
+    await state.clear()
+    
+    # Возвращаемся к очереди
+    from aiogram.types.user import User
+    from aiogram.types.chat import Chat
+    
+    callback_to_return = CallbackQuery(
+        id="return_to_queue",
+        from_user=message.from_user,
+        chat_instance="dummy",
+        message=message,
+        data=f"queue_{channel_id}"
+    )
+    await show_queue(callback_to_return)
+
+
+@router.callback_query(F.data.startswith("copy_post_"))
+async def copy_post_text(callback: CallbackQuery):
+    post_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    post = db.query(Post).filter_by(id=post_id).first()
+    db.close()
+    
+    if not post:
+        await callback.answer("Пост не найден", show_alert=True)
+        return
+    
+    # Отправляем текст поста как обычное сообщение для копирования
+    await callback.message.answer(
+        f"<b>📋 Текст поста для копирования:</b>\n\n"
+        f"<code>{post.processed_content}</code>",
+        parse_mode="HTML"
+    )
+    await callback.answer("Текст скопирован в чат", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("approve_post_"))
+async def approve_post(callback: CallbackQuery, bot: Bot):
+    post_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    post = db.query(Post).filter_by(id=post_id).first()
+    
+    if not post:
+        await callback.answer("Пост не найден", show_alert=True)
+        db.close()
+        return
+    
+    try:
+        from core.publisher import Publisher
+        publisher = Publisher(bot)
+        
+        channel = db.query(Channel).filter_by(id=post.channel_id).first()
+        message_id = await publisher.publish_post(
+            channel.channel_id,
+            post.processed_content,
+            post.media_urls
+        )
+        
+        if message_id:
+            update_post_status(db, post.id, "published", message_id)
+            await callback.answer(f"Пост одобрен и опубликован в канале {channel.channel_name}!", show_alert=True)
+            
+            # Возвращаемся к очереди
+            callback.data = f"queue_{post.channel_id}"
+            await show_queue(callback)
+        else:
+            await callback.answer("Ошибка при публикации поста", show_alert=True)
+            
+    except Exception as e:
+        await callback.answer(f"Ошибка: {str(e)[:100]}", show_alert=True)
+    finally:
+        db.close()
+
+
+@router.callback_query(F.data.startswith("reject_post_"))
+async def reject_post(callback: CallbackQuery):
+    post_id = int(callback.data.split("_")[2])
+    db = SessionLocal()
+    
+    if update_post_status(db, post_id, "rejected"):
+        await callback.answer("Пост отклонен", show_alert=True)
+        
+        # Возвращаемся к очереди
+        post = db.query(Post).filter_by(id=post_id).first()
+        if post:
+            callback.data = f"queue_{post.channel_id}"
+            await show_queue(callback)
+    else:
+        await callback.answer("Ошибка при отклонении поста", show_alert=True)
+    
+    db.close()
+
+
 @router.callback_query(F.data.startswith("toggle_"))
 async def toggle_channel_active(callback: CallbackQuery, state: FSMContext):
     channel_id = int(callback.data.split("_")[1])
