@@ -56,7 +56,7 @@ def get_active_sources(db: Session):
 
 
 def create_post(db: Session, channel_id: int, source_url: str, title: str, content: str, processed: str, media: list,
-                scheduled: datetime):
+                scheduled: datetime, guid: str = None):
     post = Post(
         channel_id=channel_id,
         source_url=source_url,
@@ -64,7 +64,8 @@ def create_post(db: Session, channel_id: int, source_url: str, title: str, conte
         original_content=content,
         processed_content=processed,
         media_urls=media,
-        scheduled_time=scheduled
+        scheduled_time=scheduled,
+        guid=guid
     )
     db.add(post)
     db.commit()
@@ -174,3 +175,57 @@ def update_post_content(db: Session, post_id: int, new_content: str):
         db.commit()
         return post
     return None
+
+
+def check_post_duplicate(db: Session, channel_id: int, title: str, content: str, guid: str = None) -> bool:
+    """
+    Проверяет, был ли уже создан пост с похожим заголовком, содержимым или GUID
+    """
+    # Ищем посты за последние 7 дней
+    from datetime import datetime, timedelta
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    
+    # Проверяем по GUID (самый надежный способ)
+    if guid:
+        existing_by_guid = db.query(Post).filter(
+            Post.channel_id == channel_id,
+            Post.guid == guid,
+            Post.scheduled_time >= week_ago
+        ).first()
+        
+        if existing_by_guid:
+            return True
+    
+    # Проверяем по заголовку (первые 50 символов)
+    title_prefix = title[:50].strip()
+    existing_by_title = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.original_title.like(f"{title_prefix}%"),
+        Post.scheduled_time >= week_ago
+    ).first()
+    
+    if existing_by_title:
+        return True
+    
+    # Проверяем по содержимому (первые 100 символов)
+    content_prefix = content[:100].strip()
+    existing_by_content = db.query(Post).filter(
+        Post.channel_id == channel_id,
+        Post.original_content.like(f"{content_prefix}%"),
+        Post.scheduled_time >= week_ago
+    ).first()
+    
+    return existing_by_content is not None
+
+
+def check_guid_exists(db: Session, channel_id: int, guid: str) -> bool:
+    """
+    Проверяет, был ли уже обработан GUID для данного канала
+    """
+    # Ищем в RSS источниках канала
+    source = db.query(RSSSource).filter(
+        RSSSource.channel_id == channel_id,
+        RSSSource.last_guid == guid
+    ).first()
+    
+    return source is not None

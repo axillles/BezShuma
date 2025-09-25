@@ -303,7 +303,20 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                 return
 
             await msg.edit_text("🧠 Обрабатываю новость с помощью AI...")
-            entry = random.choice(all_entries)
+            
+            # Ищем новость, которая еще не была опубликована
+            selected_entry = None
+            for entry in all_entries:
+                if not check_post_duplicate(db, channel_id, entry['title'], entry['content'], entry.get('guid')):
+                    selected_entry = entry
+                    break
+            
+            if not selected_entry:
+                await msg.edit_text("❌ Все найденные новости уже были опубликованы.")
+                db.close()
+                return
+            
+            entry = selected_entry
 
             processed_content = await ai_processor.process_content(
                 entry,
@@ -328,7 +341,7 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                     db, channel_id, sources[0].url,
                     entry['title'], entry['content'],
                     processed_content, media_urls,
-                    datetime.utcnow()
+                    datetime.utcnow(), entry.get('guid')
                 )
                 update_post_status(db, new_post.id, "published", message_id)
                 await msg.edit_text(

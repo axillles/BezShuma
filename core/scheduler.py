@@ -52,6 +52,10 @@ class Scheduler:
                                 if not entry.get('media'):
                                     continue
 
+                                # Проверяем дубликаты перед обработкой
+                                if check_post_duplicate(db, channel.id, entry['title'], entry['content'], entry.get('guid')):
+                                    continue
+
                                 processed = await self.ai_processor.process_content(
                                     entry,
                                     {
@@ -74,7 +78,7 @@ class Scheduler:
                                     db, channel.id, source.url,
                                     entry['title'], entry['content'],
                                     processed, entry.get('media', []),
-                                    next_time
+                                    next_time, entry.get('guid')
                                 )
 
                             if entries:

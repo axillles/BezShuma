@@ -64,6 +64,7 @@ class Post(Base):
     scheduled_time = Column(DateTime)
     published_time = Column(DateTime)
     message_id = Column(Integer)
+    guid = Column(String)  # Добавляем GUID для лучшего отслеживания дубликатов
     channel = relationship("Channel", back_populates="posts")
 
 

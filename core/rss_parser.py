@@ -26,11 +26,19 @@ class RSSParser:
                 return []
 
             new_entries = []
+            found_last_guid = False
+            
             for entry in feed.entries[:10]:
                 entry_id = entry.get('id', entry.get('link', ''))
 
+                # Если нашли последний обработанный GUID, помечаем это
                 if last_guid and entry_id == last_guid:
-                    break
+                    found_last_guid = True
+                    continue  # Пропускаем уже обработанную запись
+
+                # Если еще не нашли last_guid, продолжаем искать
+                if last_guid and not found_last_guid:
+                    continue
 
                 parsed_entry = self.parse_entry(entry)
                 if parsed_entry:
