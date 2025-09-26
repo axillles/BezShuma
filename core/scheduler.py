@@ -100,26 +100,26 @@ class Scheduler:
                 return
 
             post = posts[0]
-                channel = post.channel
+            channel = post.channel
 
-                if not channel.is_active:
-                    return
+            if not channel.is_active:
+                return
 
-                if channel.moderation_mode:
-                    update_post_status(db, post.id, "moderation")
-                    continue
+            if channel.moderation_mode:
+                update_post_status(db, post.id, "moderation")
+                return
 
-                # Публикуем строго тот пост, который первый по времени
-                message_id = await self.publisher.publish_post(
-                    channel.channel_id,
-                    post.processed_content,
-                    post.media_urls
-                )
+            # Публикуем строго тот пост, который первый по времени
+            message_id = await self.publisher.publish_post(
+                channel.channel_id,
+                post.processed_content,
+                post.media_urls
+            )
 
-                if message_id:
-                    update_post_status(db, post.id, "published", message_id)
-                else:
-                    update_post_status(db, post.id, "failed")
+            if message_id:
+                update_post_status(db, post.id, "published", message_id)
+            else:
+                update_post_status(db, post.id, "failed")
         finally:
             db.close()
 
