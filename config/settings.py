@@ -12,7 +12,8 @@ def _normalize_database_url(raw_url: str | None) -> str:
     - If starts with postgres://: convert to postgresql+psycopg2:// (SQLAlchemy recommended driver alias).
     - If starts with postgresql:// (without driver): leave as is (SQLAlchemy will choose available driver).
     """
-    default_sqlite = "sqlite:///bot.db"
+    # Абсолютный путь к bot.db, чтобы избежать разных рабочих директорий
+    default_sqlite = "sqlite:///" + os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "bot.db"))
     if not raw_url:
         return default_sqlite
 
