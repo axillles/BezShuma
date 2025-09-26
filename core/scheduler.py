@@ -25,9 +25,10 @@ class Scheduler:
             replace_existing=True
         )
 
+        # Публикуем чаще, чтобы не копился лаг публикации, но всегда строго по очереди/времени
         self.scheduler.add_job(
             self.publish_scheduled_posts,
-            IntervalTrigger(seconds=60),
+            IntervalTrigger(seconds=20),
             id='post_publisher',
             replace_existing=True
         )
@@ -69,7 +70,8 @@ class Scheduler:
                                     Post.channel_id == channel.id
                                 ).order_by(Post.scheduled_time.desc()).first()
 
-                                if last_post and last_post.scheduled_time > datetime.utcnow():
+                                # Всегда добавляем в очередь и рассчитываем корректное будущее время
+                                if last_post and last_post.scheduled_time and last_post.scheduled_time > datetime.utcnow():
                                     next_time = last_post.scheduled_time + timedelta(seconds=channel.post_interval)
                                 else:
                                     next_time = datetime.utcnow() + timedelta(minutes=5)
@@ -92,18 +94,22 @@ class Scheduler:
     async def publish_scheduled_posts(self):
         db = SessionLocal()
         try:
+            # Берем только самый ранний готовый пост, чтобы соблюдать порядок
             posts = get_pending_posts(db)
+            if not posts:
+                return
 
-            for post in posts:
+            post = posts[0]
                 channel = post.channel
 
                 if not channel.is_active:
-                    continue
+                    return
 
                 if channel.moderation_mode:
                     update_post_status(db, post.id, "moderation")
                     continue
 
+                # Публикуем строго тот пост, который первый по времени
                 message_id = await self.publisher.publish_post(
                     channel.channel_id,
                     post.processed_content,

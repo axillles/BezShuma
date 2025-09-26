@@ -78,7 +78,7 @@ def get_pending_posts(db: Session):
     return db.query(Post).filter(
         Post.status == "pending",
         Post.scheduled_time <= now
-    ).all()
+    ).order_by(Post.scheduled_time.asc()).all()
 
 
 def get_channel_queue(db: Session, channel_id: int):

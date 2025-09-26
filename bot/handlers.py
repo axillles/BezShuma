@@ -330,27 +330,25 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
             media_urls = entry.get('media', [])
 
             await msg.edit_text("✅ Готово! Публикую пост в канал...")
-            message_id = await publisher.publish_post(
-                channel.channel_id,
-                processed_content,
-                media_urls
+            # Вместо немедленной публикации — кладем пост В ОЧЕРЕДЬ строго по расписанию
+            last_post = db.query(Post).filter_by(channel_id=channel_id).order_by(Post.scheduled_time.desc()).first()
+            if last_post and last_post.scheduled_time and last_post.scheduled_time > datetime.utcnow():
+                next_time = last_post.scheduled_time + timedelta(seconds=channel.post_interval)
+            else:
+                # Если нет постов или они в прошлом — ставим ближайшее время от текущего
+                next_time = datetime.utcnow() + timedelta(minutes=5)
+
+            new_post = create_post(
+                db, channel_id, sources[0].url,
+                entry['title'], entry['content'],
+                processed_content, media_urls,
+                next_time, entry.get('guid')
             )
 
-            if message_id:
-                new_post = create_post(
-                    db, channel_id, sources[0].url,
-                    entry['title'], entry['content'],
-                    processed_content, media_urls,
-                    datetime.utcnow(), entry.get('guid')
-                )
-                update_post_status(db, new_post.id, "published", message_id)
-                await msg.edit_text(
-                    "✅ Пост успешно опубликован!",
-                    reply_markup=keyboards.channel_menu(channel_id)
-                )
-            else:
-                await msg.edit_text(
-                    f"❌ Ошибка при публикации поста в Telegram. Убедитесь, что бот является администратором в канале {channel.channel_name}.")
+            await msg.edit_text(
+                "✅ Пост добавлен в очередь и будет опубликован по расписанию",
+                reply_markup=keyboards.channel_menu(channel_id)
+            )
 
     except Exception as e:
         await msg.edit_text(f"❌ Произошла ошибка: {str(e)[:100]}")
