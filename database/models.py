@@ -3,9 +3,20 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from datetime import datetime
 from config.settings import DATABASE_URL, DEFAULT_AI_MODEL
+import os
 
 Base = declarative_base()
-engine = create_engine(DATABASE_URL)
+
+# Настройки движка для PostgreSQL
+engine_kwargs = {}
+if DATABASE_URL.startswith('postgresql'):
+    engine_kwargs.update({
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+        'echo': os.getenv('SQL_DEBUG', '').lower() == 'true'
+    })
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine)
 
 

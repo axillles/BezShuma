@@ -3,6 +3,7 @@ g4f
 feedparser
 apscheduler
 sqlalchemy
+psycopg2-binary
 aiohttp
 beautifulsoup4
 Pillow
