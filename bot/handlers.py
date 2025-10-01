@@ -1,4 +1,5 @@
 from aiogram import Router, F, Bot
+from utils.helpers import safe_edit_text
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -50,10 +51,7 @@ async def start_command(message: Message, state: FSMContext):
 @router.callback_query(F.data == "back_main")
 async def back_to_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
-        "Главное меню:",
-        reply_markup=keyboards.main_admin_menu()
-    )
+    await safe_edit_text(callback.message, "Главное меню:", reply_markup=keyboards.main_admin_menu())
 
 
 @router.message(Command("my_channels"))
@@ -84,7 +82,7 @@ async def show_channels(event: Message | CallbackQuery):
     if isinstance(event, Message):
         await event.answer(text, reply_markup=reply_markup)
     else:
-        await event.message.edit_text(text, reply_markup=reply_markup)
+        await safe_edit_text(event.message, text, reply_markup=reply_markup)
 
 
 @router.message(Command("add_channel"))
@@ -98,7 +96,7 @@ async def add_channel_start(event: Message | CallbackQuery, state: FSMContext):
     if isinstance(event, Message):
         await event.answer(text)
     else:
-        await event.message.edit_text(text)
+        await safe_edit_text(event.message, text)
     await state.set_state(ChannelStates.waiting_channel_id)
 
 
@@ -282,7 +280,7 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
         db.close()
         return
 
-    msg = await callback.message.edit_text("⏳ Ищу свежие новости...")
+    msg = await safe_edit_text(callback.message, "⏳ Ищу свежие новости...")
 
     try:
         from core.rss_parser import RSSParser
@@ -298,11 +296,11 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                     all_entries.extend(entries[:3])
 
             if not all_entries:
-                await msg.edit_text("❌ Не найдено новых новостей в источниках.")
+                await safe_edit_text(msg, "❌ Не найдено новых новостей в источниках.")
                 db.close()
                 return
 
-            await msg.edit_text("🧠 Обрабатываю новость с помощью AI...")
+            await safe_edit_text(msg, "🧠 Обрабатываю новость с помощью AI...")
             
             # Ищем новость, которая еще не была опубликована
             selected_entry = None
@@ -312,7 +310,7 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                     break
             
             if not selected_entry:
-                await msg.edit_text("❌ Все найденные новости уже были опубликованы.")
+                await safe_edit_text(msg, "❌ Все найденные новости уже были опубликованы.")
                 db.close()
                 return
             
@@ -329,7 +327,7 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
 
             media_urls = entry.get('media', [])
 
-            await msg.edit_text("✅ Готово! Публикую пост в канал...")
+            await safe_edit_text(msg, "✅ Готово! Публикую пост в канал...")
             # Вместо немедленной публикации — кладем пост В ОЧЕРЕДЬ строго по расписанию
             last_post = db.query(Post).filter_by(channel_id=channel_id).order_by(Post.scheduled_time.desc()).first()
             if last_post and last_post.scheduled_time and last_post.scheduled_time > datetime.utcnow():
@@ -345,13 +343,14 @@ async def create_post_start(callback: CallbackQuery, bot: Bot):
                 next_time, entry.get('guid')
             )
 
-            await msg.edit_text(
+            await safe_edit_text(
+                msg,
                 "✅ Пост добавлен в очередь и будет опубликован по расписанию",
                 reply_markup=keyboards.channel_menu(channel_id)
             )
 
     except Exception as e:
-        await msg.edit_text(f"❌ Произошла ошибка: {str(e)[:100]}")
+        await safe_edit_text(msg, f"❌ Произошла ошибка: {str(e)[:100]}")
     finally:
         db.close()
 
@@ -364,14 +363,14 @@ async def show_queue(callback: CallbackQuery):
     db.close()
 
     if not posts:
-        await callback.message.edit_text(
+        await safe_edit_text(callback.message,
             "📭 Очередь постов пуста",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="◀️ Назад", callback_data=f"channel_{channel_id}")]
             ])
         )
     else:
-        await callback.message.edit_text(
+        await safe_edit_text(callback.message,
             f"📝 В очереди {len(posts)} постов",
             reply_markup=keyboards.post_queue_menu(channel_id, posts)
         )

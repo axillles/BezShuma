@@ -3,6 +3,7 @@ import hashlib
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import asyncio
+from aiogram.exceptions import TelegramBadRequest
 
 
 def sanitize_html(text: str) -> str:
@@ -87,3 +88,20 @@ def clean_rss_content(html_content: str) -> str:
     text = ' '.join(chunk for chunk in chunks if chunk)
 
     return text[:2000]
+
+
+async def safe_edit_text(message, text: str, **kwargs):
+    """Safely edit message text, ignoring 'message is not modified' errors.
+
+    - Skips edit when message.text already equals text and no reply_markup changes
+    - Catches TelegramBadRequest with 'message is not modified' and returns original message
+    """
+    try:
+        current_text = getattr(message, "text", None)
+        if (current_text == text) and ("reply_markup" not in kwargs):
+            return message
+        return await message.edit_text(text, **kwargs)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e).lower():
+            return message
+        raise
