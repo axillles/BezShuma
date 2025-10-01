@@ -25,26 +25,22 @@ class RSSParser:
             if not feed.entries:
                 return []
 
-            new_entries = []
-            found_last_guid = False
-            
-            for entry in feed.entries[:10]:
+            # По умолчанию ленты отсортированы от новых к старым
+            # Нам нужны записи НОВЕЕ, чем last_guid. То есть все, что встречается ДО last_guid
+            collected: List[Dict] = []
+            for entry in feed.entries[:20]:
                 entry_id = entry.get('id', entry.get('link', ''))
-
-                # Если нашли последний обработанный GUID, помечаем это
                 if last_guid and entry_id == last_guid:
-                    found_last_guid = True
-                    continue  # Пропускаем уже обработанную запись
-
-                # Если еще не нашли last_guid, продолжаем искать
-                if last_guid and not found_last_guid:
-                    continue
+                    # Дошли до последнего обработанного – дальше только старые, прекращаем
+                    break
 
                 parsed_entry = self.parse_entry(entry)
                 if parsed_entry:
-                    new_entries.append(parsed_entry)
+                    collected.append(parsed_entry)
 
-            return new_entries
+            # Если last_guid отсутствует в ленте (устарел), всё равно публикуем немного новых записей
+            # collected уже содержит верхние элементы (новые). Возвращаем как есть — от новых к старым.
+            return collected
         except Exception:
             return []
 

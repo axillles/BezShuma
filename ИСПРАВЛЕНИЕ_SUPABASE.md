@@ -76,3 +76,4 @@ python3 test_db_connection.py
 1. Проверьте статус Supabase: https://status.supabase.com
 2. Обратитесь в поддержку Supabase
 3. Создайте новый проект в Supabase как резервный вариант
+

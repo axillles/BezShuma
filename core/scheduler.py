@@ -49,7 +49,8 @@ class Scheduler:
                         if entries:
                             channel = source.channel
 
-                            for entry in entries[:2]:
+                            # Обрабатываем от старых к новым, чтобы очередь шла в правильном порядке
+                            for entry in reversed(entries):
                                 if not entry.get('media'):
                                     continue
 
@@ -84,6 +85,7 @@ class Scheduler:
                                 )
 
                             if entries:
+                                # Сохраняем самый новый GUID как last_guid
                                 update_source_check(db, source.id, entries[0]['guid'])
 
                     except Exception:
