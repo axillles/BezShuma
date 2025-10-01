@@ -51,8 +51,7 @@ class Scheduler:
 
                             # Обрабатываем от старых к новым, чтобы очередь шла в правильном порядке
                             for entry in reversed(entries):
-                                if not entry.get('media'):
-                                    continue
+                                # Больше не требуем обязательного наличия медиа — посты без изображений тоже учитываем
 
                                 # Проверяем дубликаты перед обработкой
                                 if check_post_duplicate(db, channel.id, entry['title'], entry['content'], entry.get('guid')):
@@ -86,7 +85,8 @@ class Scheduler:
 
                             if entries:
                                 # Сохраняем самый новый GUID как last_guid
-                                update_source_check(db, source.id, entries[0]['guid'])
+                                latest_guid = entries[0].get('guid') or entries[0].get('link') or None
+                                update_source_check(db, source.id, latest_guid)
 
                     except Exception:
                         update_source_check(db, source.id, error=True)
