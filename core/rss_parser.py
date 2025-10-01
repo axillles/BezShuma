@@ -48,10 +48,7 @@ class RSSParser:
         try:
             content = self.extract_content(entry)
             media = self.extract_media(entry)
-
-            if not media:
-                return None
-
+            # Разрешаем посты без изображений: media может быть пустым списком
             return {
                 'guid': entry.get('id', entry.get('link', '')),
                 'title': entry.get('title', 'No title'),
