@@ -48,6 +48,7 @@ class Scheduler:
 
                         if entries:
                             channel = source.channel
+                            added_posts = 0
 
                             # Обрабатываем от старых к новым, чтобы очередь шла в правильном порядке
                             for entry in reversed(entries):
@@ -82,11 +83,16 @@ class Scheduler:
                                     processed, entry.get('media', []),
                                     next_time, entry.get('guid')
                                 )
+                                added_posts += 1
 
-                            if entries:
+                            # Обновляем last_guid только если добавили посты
+                            if added_posts > 0 and entries:
                                 # Сохраняем самый новый GUID как last_guid
                                 latest_guid = entries[0].get('guid') or entries[0].get('link') or None
                                 update_source_check(db, source.id, latest_guid)
+                            else:
+                                # Если не добавили постов, просто обновляем время проверки
+                                update_source_check(db, source.id)
 
                     except Exception:
                         update_source_check(db, source.id, error=True)

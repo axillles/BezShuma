@@ -21,7 +21,28 @@ class RSSParser:
 
     async def parse_feed(self, url: str, last_guid: Optional[str] = None) -> List[Dict]:
         try:
-            feed = feedparser.parse(url)
+            # Добавляем заголовки для обхода Cloudflare
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
+            if self.session:
+                async with self.session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        content = await response.text()
+                        feed = feedparser.parse(content)
+                    else:
+                        # Fallback к обычному feedparser
+                        feed = feedparser.parse(url)
+            else:
+                # Fallback к обычному feedparser
+                feed = feedparser.parse(url)
+                
             if not feed.entries:
                 return []
 

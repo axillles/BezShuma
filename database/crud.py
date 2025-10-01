@@ -181,38 +181,38 @@ def check_post_duplicate(db: Session, channel_id: int, title: str, content: str,
     """
     Проверяет, был ли уже создан пост с похожим заголовком, содержимым или GUID
     """
-    # Ищем посты за последние 7 дней
+    # Ищем посты за последние 30 дней (увеличиваем период)
     from datetime import datetime, timedelta
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    month_ago = datetime.utcnow() - timedelta(days=30)
     
     # Проверяем по GUID (самый надежный способ)
     if guid:
         existing_by_guid = db.query(Post).filter(
             Post.channel_id == channel_id,
             Post.guid == guid,
-            Post.scheduled_time >= week_ago
+            Post.scheduled_time >= month_ago
         ).first()
         
         if existing_by_guid:
             return True
     
-    # Проверяем по заголовку (первые 50 символов)
-    title_prefix = title[:50].strip()
+    # Проверяем по заголовку (более строгое сравнение)
+    title_clean = title.strip()[:100]
     existing_by_title = db.query(Post).filter(
         Post.channel_id == channel_id,
-        Post.original_title.like(f"{title_prefix}%"),
-        Post.scheduled_time >= week_ago
+        Post.original_title == title_clean,
+        Post.scheduled_time >= month_ago
     ).first()
     
     if existing_by_title:
         return True
     
-    # Проверяем по содержимому (первые 100 символов)
-    content_prefix = content[:100].strip()
+    # Проверяем по содержимому (первые 200 символов, более точное сравнение)
+    content_clean = content.strip()[:200]
     existing_by_content = db.query(Post).filter(
         Post.channel_id == channel_id,
-        Post.original_content.like(f"{content_prefix}%"),
-        Post.scheduled_time >= week_ago
+        Post.original_content.like(f"%{content_clean}%"),
+        Post.scheduled_time >= month_ago
     ).first()
     
     return existing_by_content is not None
